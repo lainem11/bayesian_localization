@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "ABL: Adaptive Bayesian Localization"
+abstract: "Bayesian localization of cortical sources of brain activity from binary responses to external stimulation."
+authors:
+  - family-names: Laine
+    given-names: Mikael
+    email: mikael.h.laine@gmail.com
+version: 1.0.0
+date-released: "2026-05-29"
+license: GPL-3.0-or-later
+repository-code: "https://github.com/lainem11/bayesian_localization"
+url: "https://github.com/lainem11/bayesian_localization"
+keywords:
+  - Bayesian inference
+  - cortical localization
+  - transcranial magnetic stimulation
+  - motor evoked potentials
+  - adaptive stimulation
