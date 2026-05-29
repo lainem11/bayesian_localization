@@ -145,7 +145,20 @@ images/         figures used in this README
 
 ## Citation
 
-If you use ABL in academic work, please cite it. A reference publication is in preparation — please check back for an updated citation, or contact the author in the meantime.
+If you use ABL in academic work, please cite it via the Zenodo archive ([10.5281/zenodo.20441813](https://doi.org/10.5281/zenodo.20441813)):
+
+```bibtex
+@software{laine2026abl,
+  author  = {Laine, Mikael},
+  title   = {{ABL: Adaptive Bayesian Localization}},
+  year    = {2026},
+  version = {1.0.0},
+  doi     = {10.5281/zenodo.20441813},
+  url     = {https://doi.org/10.5281/zenodo.20441813}
+}
+```
+
+A reference publication is in preparation — please check back for an updated citation.
 
 ## License
 
