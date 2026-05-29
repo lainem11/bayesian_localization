@@ -1,5 +1,8 @@
 # ABL: Adaptive Bayesian Localization
 
+[![DOI](https://zenodo.org/badge/1238737755.svg)](https://doi.org/10.5281/zenodo.20441812)
+
+
 *Bayesian localization of cortical sources of brain activity from binary responses to external stimulation.*
 
 ![Method overview](images/method_figure.png)
