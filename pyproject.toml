@@ -1,0 +1,47 @@
+[project]
+name = "ABL"
+version = "1.0.0"
+requires-python = ">=3.11"
+description = "Bayesian localization of electric field-induced motor evoked potentials."
+authors = [
+    { name = "Mikael Laine", email = "mikael.h.laine@gmail.com" },
+]
+license = { text = "GPL-3.0-or-later" }
+readme = "README.md"
+
+[project.urls]
+"Repository" = "https://github.com/lainem11/bayesian_localization"
+"Bug Tracker" = "https://github.com/lainem11/bayesian_localization/issues"
+
+[tool.poetry]
+packages = [{include = "ABL", from = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.14"
+torch = {version = ">=2.7.1,<3.0.0", source = "pytorch"}
+torchvision = {version = ">=0.22.1", source = "pytorch"}
+jax = {extras = ["cuda12"], version = "^0.7.0"}
+evosax = ">=0.2.0,<0.3.0"
+h5py = ">=3.14.0,<4.0.0"
+plotly = ">=6.2.0,<7.0.0"
+dash = ">=3.2.0,<4.0.0"
+ipykernel = ">=6.30.1,<7.0.0"
+jupyterlab = ">=4.4.5,<5.0.0"
+kaleido = "0.2.1"
+numpyro = "^0.20.0"
+lmfit = "^1.3.4"
+ipywidgets = "^8.1.8"
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu126"
+priority = "explicit"
+
+[tool.poetry.group.dev.dependencies]
+ray = {extras = ["tune"], version = "^2.48.0"}
+optuna = "^4.4.0"
+pynvml = "^12.0.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
