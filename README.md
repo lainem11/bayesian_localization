@@ -44,6 +44,8 @@ Under the hood, ABL fits a response model, and picks stimuli with JAX-native Dif
 | RAM      | 4 GB                             |
 | VRAM     | 2 GB (only if using GPU)         |
 
+NOTE: GPU acceleration with JAX is not supported on Windows, so electric field optimization (S.choose_next_stimulus()) then runs on CPU.
+
 ### Installation
 
 This project uses [Poetry](https://python-poetry.org/) to manage dependencies.
