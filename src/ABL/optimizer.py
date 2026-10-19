@@ -36,7 +36,6 @@ Array = jnp.ndarray
 # style to be compatible with JAX's JIT (Just-In-Time) compilation.
 
 def _create_objective_function(
-    efield_basis_means_jax: Array,
     efield_basis_jax: Array,
     null_dir_basis_jax: Array,
     prob_lim_jax: Array,
@@ -56,7 +55,6 @@ def _create_objective_function(
     penalizing solutions that violate hardware constraints.
 
     Args:
-        efield_basis_means_jax: Mean E-field vectors across the region of interest.
         efield_basis_jax: PCA basis for the E-field.
         null_dir_basis_jax: Reference direction in the 2D projected subspace.
         prob_lim_jax: Min/max limits for clamping probabilities.
@@ -82,8 +80,7 @@ def _create_objective_function(
 
     def efield_to_subspace_jax(efield: Array) -> Array:
         """Projects a 3D E-field vector into the learned 2D subspace."""
-        new_centered = efield - efield_basis_means_jax
-        return jnp.einsum('vd,vdt->vt', new_centered, efield_basis_jax)
+        return jnp.einsum('vd,vdt->vt', efield, efield_basis_jax)
 
     def efield_to_mag_and_angle_jax(efield: Array) -> Tuple[Array, Array]:
         """Calculates E-field magnitude and its angle in the 2D subspace."""
@@ -276,7 +273,6 @@ class StimulusOptimizer:
 
         # Create and JIT-compile the objective function once during initialization.
         self.jitted_objective = _create_objective_function(
-            efield_basis_means_jax=jax.device_put(efield_model.efield_basis_means.cpu().numpy().astype(np.float32), self.jax_device),
             efield_basis_jax=jax.device_put(efield_model.efield_basis.cpu().numpy().astype(np.float32), self.jax_device),
             null_dir_basis_jax=jax.device_put(efield_model.null_dir_basis.squeeze().cpu().numpy().astype(np.float32), self.jax_device),
             prob_lim_jax=jax.device_put(response_model.prob_lim, self.jax_device),
