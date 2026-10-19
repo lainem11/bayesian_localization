@@ -53,7 +53,7 @@ This project uses [Poetry](https://python-poetry.org/) to manage dependencies.
 ```bash
 git clone git@github.com:lainem11/bayesian_localization.git
 cd bayesian_localization
-poetry install
+poetry install --without dev
 ```
 
 To activate the environment afterwards, run `poetry env activate`.
