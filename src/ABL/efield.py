@@ -168,9 +168,8 @@ class EFieldModel:
         Returns:
             The transformed tensor in the 2D subspace, with a shape of (B, N, 2).
         """
-        # Center the data, then project it onto the basis vectors
-        new_centered = efield.transpose(0, 1)
-        new_transformed = new_centered @ self.efield_basis
+        # Project onto the basis vectors.
+        new_transformed = efield.transpose(0, 1) @ self.efield_basis
         return new_transformed.transpose(0, 1)
 
     def angles_to_directions(self, angles: Tensor, vertices: Tensor) -> Tensor:
@@ -186,7 +185,6 @@ class EFieldModel:
         # Convert angles back to 2D vectors in the subspace
         dir_transformed = _internal._utils.angle_to_vector(self.null_dir_basis[0, vertices], angles)
         basis = self.efield_basis[vertices]
-        means = self.efield_basis_means[vertices]
-        # Project back to 3D and add the mean back
-        dir_reconstructed = (dir_transformed[:, :, None, :] @ basis.transpose(-2, -1)) + means[:, None, :]
+        # Project back to 3D
+        dir_reconstructed = dir_transformed[:, :, None, :] @ basis.transpose(-2, -1)
         return dir_reconstructed.unsqueeze(-2)

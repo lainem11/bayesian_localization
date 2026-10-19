@@ -44,6 +44,8 @@ Under the hood, ABL fits a response model, and picks stimuli with JAX-native Dif
 | RAM      | 4 GB                             |
 | VRAM     | 2 GB (only if using GPU)         |
 
+NOTE: GPU acceleration with JAX is not supported on Windows, so electric field optimization (S.choose_next_stimulus()) then runs on CPU.
+
 ### Installation
 
 This project uses [Poetry](https://python-poetry.org/) to manage dependencies.
@@ -51,7 +53,7 @@ This project uses [Poetry](https://python-poetry.org/) to manage dependencies.
 ```bash
 git clone git@github.com:lainem11/bayesian_localization.git
 cd bayesian_localization
-poetry install
+poetry install --without dev
 ```
 
 To activate the environment afterwards, run `poetry env activate`.
@@ -152,7 +154,7 @@ If you use ABL in academic work, please cite it via the Zenodo archive ([10.5281
   author  = {Laine, Mikael},
   title   = {{ABL: Adaptive Bayesian Localization}},
   year    = {2026},
-  version = {1.0.0},
+  version = {1.0.1},
   doi     = {10.5281/zenodo.20441813},
   url     = {https://doi.org/10.5281/zenodo.20441813}
 }
