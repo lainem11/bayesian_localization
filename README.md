@@ -154,7 +154,7 @@ If you use ABL in academic work, please cite it via the Zenodo archive ([10.5281
   author  = {Laine, Mikael},
   title   = {{ABL: Adaptive Bayesian Localization}},
   year    = {2026},
-  version = {1.0.0},
+  version = {1.0.1},
   doi     = {10.5281/zenodo.20441813},
   url     = {https://doi.org/10.5281/zenodo.20441813}
 }
