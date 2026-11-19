@@ -68,7 +68,8 @@ class LocalizationSession:
                  ROI: Optional[Tensor] = None,
                  device: Optional[str] = None,
                  silent_mode: Optional[bool] = False,
-                 compile_fit: Optional[bool] = None):
+                 compile_fit: Optional[bool] = None,
+                 triton_objective: bool = False):
         """Initializes the LocalizationSession and all its components.
 
         Args:
@@ -82,6 +83,9 @@ class LocalizationSession:
             compile_fit: If True, the model-fitting loss is compiled with `torch.compile`, which makes
                 `localize()` several times faster after a one-time compilation of a few seconds during
                 initialization. If None (default), enabled when running on CUDA.
+            triton_objective: If True, stimulus optimization evaluates its objective with a fused Triton
+                kernel instead of XLA. Requires a CUDA GPU and the `jax-triton` package; otherwise
+                falls back to XLA with a warning.
         """
         _utils.set_random_seed()
 
@@ -103,7 +107,8 @@ class LocalizationSession:
         self.efield_model = EFieldModel(efield_set, self.mesh, self.device)
         self.response_model = ResponseModel(self.mesh, self.device, compile_fit=compile_fit)
         self.response_model.prepare_compiled_fit()
-        self.optimizer = StimulusOptimizer(self.efield_model, self.response_model, self.stimulator, self.device) if (self.stimulator is not None and efield_set is not None) else None
+        self.optimizer = StimulusOptimizer(self.efield_model, self.response_model, self.stimulator, self.device,
+                                           triton_objective=triton_objective) if (self.stimulator is not None and efield_set is not None) else None
         self.visualizer = Visualizer()
         self.session_ended = False
         self.trial_completed = False
@@ -119,7 +124,7 @@ class LocalizationSession:
 
     @classmethod
     def load_experiment(cls, save_dir: str, device: Optional[str] = None, silent_mode: Optional[bool] = False,
-                        compile_fit: Optional[bool] = None) -> 'LocalizationSession':
+                        compile_fit: Optional[bool] = None, triton_objective: bool = False) -> 'LocalizationSession':
         """Loads a saved experiment from a directory.
 
         This method creates a new save directory to avoid overwriting the
@@ -130,6 +135,7 @@ class LocalizationSession:
             device: Computing device ('cpu' or 'cuda'). If None, chosen automatically.
             silent_mode: If True, disables printouts, automatic saving, and plotting.
             compile_fit: Passed to `LocalizationSession`; see there.
+            triton_objective: Passed to `LocalizationSession`; see there.
 
         Returns:
             A LocalizationSession instance initialized with the saved state.
@@ -167,7 +173,8 @@ class LocalizationSession:
             ROI=ROI,
             device=device,
             silent_mode=silent_mode,
-            compile_fit=compile_fit
+            compile_fit=compile_fit,
+            triton_objective=triton_objective
         )
 
         # Overwrite the fresh experiment file with the original file
