@@ -27,13 +27,13 @@ Under the hood, ABL fits a response model, and picks stimuli with JAX-native Dif
   * In-loop posterior updates (MLE) during a session and full [NumPyro](https://num.pyro.ai/) MCMC posteriors offline.
   * Multi-coil stimulator support with hardware constraints loaded from JSON.
   * Interactive Plotly/Dash visualization running in a separate process.
-  * Optional CUDA acceleration via [PyTorch](https://pytorch.org/) and JAX.
+  * Optional CUDA acceleration via [PyTorch](https://pytorch.org/) and JAX, with a compiled model fit and a fused [Triton](https://triton-lang.org/) kernel for stimulus optimization (see [Performance options](#performance-options)).
 
 ## Getting started
 
 ### Prerequisites
 
-  * **Python 3.11 or higher**
+  * **Python 3.12 or higher**
   * **(Optional)** An NVIDIA GPU with CUDA 12-compatible drivers for acceleration. ABL falls back to CPU automatically.
 
 #### System requirements
@@ -103,6 +103,34 @@ S.import_trial_data(efield_trials, responses)
 S.localize(full=True)
 S.end_session()
 ```
+
+## Performance options
+
+Two `LocalizationSession` arguments control GPU acceleration:
+
+| Argument | Default | Effect |
+| :------- | :------ | :----- |
+| `compile_fit` | `None`: on with CUDA, off on CPU | Compiles the loss of the in-loop model fit (`localize()`) with `torch.compile`. The compilation runs once during session setup (about 8 s the first time, under 1 s once PyTorch's on-disk cache is warm), so no trial is delayed by it. Falls back to eager PyTorch with a warning if compilation fails. |
+| `triton_objective` | `None`: on with a CUDA GPU on Linux, off otherwise | Evaluates the stimulus optimizer's objective with a fused Triton kernel instead of XLA. The kernel's block sizes are tuned for the GPU during session setup, which takes about 9 s in the first session of a process. If the kernel cannot be used, XLA is used instead (with a warning only when `triton_objective=True` was requested). Set `False` to always use XLA. |
+
+Both are on by default when a CUDA GPU is available. To turn them off:
+
+```python
+S = LocalizationSession(cortex=cortex, save_path="my_session", stimulator=stimulator,
+                        efield_set=E, compile_fit=False, triton_objective=False)
+```
+
+Measured on an RTX 4060 Ti (WSL2) with the 50-trial example session above, median per trial after the first:
+
+| Configuration | `localize()` | `choose_next_stimulus()` | Session |
+| :------------ | -----------: | -----------------------: | ------: |
+| Version 1.0.1 | 0.59 s | 0.33 s | 49 s |
+| `triton_objective=False` | 0.17–0.20 s | 0.35–0.39 s | 28–32 s |
+| Default (both on) | 0.18–0.20 s | 0.09–0.10 s | 14–16 s |
+
+Session times exclude the one-time costs of the first session in a process: compiling the fit and tuning the kernel add about 8 s each to its setup.
+
+Both options, and the move to JAX 0.12 in version 1.1.0, change floating-point rounding, so a session does not reproduce the exact trial sequence of version 1.0.1. In replays of recorded trials the fitted posteriors stay close to those of 1.0.1 and give the same most probable vertex; the Triton objective differs from XLA's by about as much as XLA's float32 result differs from a float64 reference. The Triton path supports the `None` and `5coil_strain` constraint types.
 
 ## Example output
 

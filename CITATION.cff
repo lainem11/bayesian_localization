@@ -6,9 +6,9 @@ authors:
   - family-names: Laine
     given-names: Mikael
     email: mikael.h.laine@gmail.com
-version: 1.0.1
-date-released: "2026-10-19"
-doi: 10.5281/zenodo.20441813
+version: 1.1.0
+date-released: "2026-11-19"
+doi: 10.5281/zenodo.20441812
 license: GPL-3.0-or-later
 repository-code: "https://github.com/lainem11/bayesian_localization"
 url: "https://github.com/lainem11/bayesian_localization"

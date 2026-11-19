@@ -67,7 +67,9 @@ class LocalizationSession:
                  efield_set: Optional[Tensor] = None,
                  ROI: Optional[Tensor] = None,
                  device: Optional[str] = None,
-                 silent_mode: Optional[bool] = False):
+                 silent_mode: Optional[bool] = False,
+                 compile_fit: Optional[bool] = None,
+                 triton_objective: Optional[bool] = None):
         """Initializes the LocalizationSession and all its components.
 
         Args:
@@ -78,6 +80,13 @@ class LocalizationSession:
             ROI: Tensor of indices defining the region of interest on the cortex.
             device: Computing device, 'cpu' or 'cuda'. If None, it is chosen automatically.
             silent_mode: If True, disables printouts, automatic saving, and plotting.
+            compile_fit: If True, the model-fitting loss is compiled with `torch.compile`, which makes
+                `localize()` several times faster after a one-time compilation of a few seconds during
+                initialization. If None (default), enabled when running on CUDA.
+            triton_objective: Whether stimulus optimization evaluates its objective with a fused Triton
+                kernel instead of XLA. If None (default), used when JAX runs on a CUDA GPU and the
+                `jax-triton` package is installed. If True, a missing requirement gives a warning and
+                XLA is used. If False, always XLA.
         """
         _utils.set_random_seed()
 
@@ -97,8 +106,10 @@ class LocalizationSession:
         self.mesh = CorticalMesh(cortex, ROI)
         self.data_handler = ExperimentData(self.device)
         self.efield_model = EFieldModel(efield_set, self.mesh, self.device)
-        self.response_model = ResponseModel(self.mesh, self.device)
-        self.optimizer = StimulusOptimizer(self.efield_model, self.response_model, self.stimulator, self.device) if (self.stimulator is not None and efield_set is not None) else None
+        self.response_model = ResponseModel(self.mesh, self.device, compile_fit=compile_fit)
+        self.response_model.prepare_compiled_fit()
+        self.optimizer = StimulusOptimizer(self.efield_model, self.response_model, self.stimulator, self.device,
+                                           triton_objective=triton_objective) if (self.stimulator is not None and efield_set is not None) else None
         self.visualizer = Visualizer()
         self.session_ended = False
         self.trial_completed = False
@@ -113,7 +124,8 @@ class LocalizationSession:
         self.initialize_trials()
 
     @classmethod
-    def load_experiment(cls, save_dir: str, device: Optional[str] = None, silent_mode: Optional[bool] = False) -> 'LocalizationSession':
+    def load_experiment(cls, save_dir: str, device: Optional[str] = None, silent_mode: Optional[bool] = False,
+                        compile_fit: Optional[bool] = None, triton_objective: Optional[bool] = None) -> 'LocalizationSession':
         """Loads a saved experiment from a directory.
 
         This method creates a new save directory to avoid overwriting the
@@ -123,6 +135,8 @@ class LocalizationSession:
             save_dir: The directory containing the 'experiment_data.hdf5' file.
             device: Computing device ('cpu' or 'cuda'). If None, chosen automatically.
             silent_mode: If True, disables printouts, automatic saving, and plotting.
+            compile_fit: Passed to `LocalizationSession`; see there.
+            triton_objective: Passed to `LocalizationSession`; see there.
 
         Returns:
             A LocalizationSession instance initialized with the saved state.
@@ -159,7 +173,9 @@ class LocalizationSession:
             efield_set=efield_set,
             ROI=ROI,
             device=device,
-            silent_mode=silent_mode
+            silent_mode=silent_mode,
+            compile_fit=compile_fit,
+            triton_objective=triton_objective
         )
 
         # Overwrite the fresh experiment file with the original file
@@ -231,8 +247,12 @@ class LocalizationSession:
         self.visualizer.stop_plotter()
         gc.collect()
         jax.clear_caches()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        if self.device.type == 'cuda':
+            try:
+                torch.cuda.empty_cache()
+            except AttributeError:
+                # Raised when __del__ runs during interpreter shutdown, after torch.cuda is torn down
+                pass
         if not self.silent_mode:
             print("Session ended.")
             
