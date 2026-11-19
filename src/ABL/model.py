@@ -40,6 +40,35 @@ from .mesh import CorticalMesh
 # Type Aliases
 Tensor = torch.Tensor
 
+
+def _fit_loss(response_func: Callable, inverse_convs: List[Callable], reg_lambda: float, keys: tuple,
+              values: List[Tensor], e_mag: Tensor, angles: Tensor, responses: Tensor) -> Tensor:
+    """Negative log-likelihood of the responses plus L2 regularization, for one optimizer step.
+
+    A pure function of its inputs (defined outside the class) so that it can be wrapped
+    in `torch.compile`, which fuses its many elementwise operations into a few kernels.
+
+    Args:
+        response_func: Response function, (e_mag, angles, params) -> response probability.
+        inverse_convs: Per parameter, the map from the unconstrained optimized value to its native range.
+        reg_lambda: L2 regularization weight.
+        keys: Parameter names, in the same order as `inverse_convs` and `values`.
+        values: Unconstrained parameter tensors being optimized, each of shape (n_vertices,).
+        e_mag: E-field magnitudes, shape (n_trials, n_vertices).
+        angles: E-field angles, shape (n_trials, n_vertices).
+        responses: Binary responses, shape (n_trials,).
+    """
+    # Convert parameters from unconstrained space back to their native range for loss calculation
+    back_converted_params = {k: {'values': conv(v)} for k, conv, v in zip(keys, inverse_convs, values)}
+
+    responsivity = response_func(e_mag, angles, back_converted_params)
+    likelihood = responsivity * responses.view(-1, 1) + (1 - responsivity) * (1 - responses).view(-1, 1)
+    loss = -likelihood.log().mean()
+
+    # Add L2 regularization to prevent overfitting
+    reg = sum(reg_lambda * (v**2).mean() for v in values)
+    return loss + reg
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -105,17 +134,22 @@ class ResponseModel:
         losses (Tensor): Stores the loss from each iteration of the last
             optimization run.
         mcmc_settings (Dict): Hyperparameters for the MCMC sampling kernel.
+        compile_fit (bool): Whether the fitting loss runs through `torch.compile`.
     """
 
-    def __init__(self, mesh: CorticalMesh, device: torch.device):
+    def __init__(self, mesh: CorticalMesh, device: torch.device, compile_fit: Optional[bool] = None):
         """Initializes the ResponseModel.
 
         Args:
             mesh: The cortical mesh component.
             device: The computation device.
+            compile_fit: If True, the loss of the fitting loop is compiled with `torch.compile`
+                (compiled once, in `prepare_compiled_fit`). If None, enabled on CUDA devices only.
         """
         self.mesh = mesh
         self.device = device
+        self.compile_fit: bool = (device.type == 'cuda') if compile_fit is None else compile_fit
+        self._loss_fn: Callable = _fit_loss
         if device.type == 'cpu':
             self.jax_device = jax.devices('cpu')[0]
         else:
@@ -211,6 +245,41 @@ class ResponseModel:
         self.losses = losses
 
         self._store_fit_results(opt_param_dict)
+
+    def prepare_compiled_fit(self):
+        """Compiles the fitting loss with `torch.compile` ahead of the first trial, if `compile_fit` is set.
+
+        Compilation takes several seconds, so it is done here, on dummy data, instead of during
+        the first trials of a session. Two graphs are compiled: one for a single trial (PyTorch
+        specializes dimensions of size 1) and one with a dynamic number of trials, which covers
+        every later trial without recompiling. If compilation fails (e.g. no compiler toolchain
+        available), the fit falls back to eager PyTorch with a warning.
+        """
+        if not self.compile_fit:
+            self._loss_fn = _fit_loss
+            return
+        try:
+            compiled = torch.compile(_fit_loss)
+            n_points = len(self.mesh.ROI)
+            keys = tuple(self.param_dict)
+            inverse_convs = [self.param_dict[k]['conversion_func'][1] for k in keys]
+            for n_trials in (1, 2):
+                values = [self.param_dict[k]['conversion_func'][0](self.param_dict[k]['values']).detach().requires_grad_()
+                          for k in keys]
+                e_mag = torch.full((n_trials, n_points), 50.0, device=self.device)
+                angles = torch.zeros((n_trials, n_points), device=self.device)
+                responses = (torch.arange(n_trials, device=self.device) % 2).float()
+                if n_trials > 1:
+                    for t in (e_mag, angles, responses):
+                        torch._dynamo.mark_dynamic(t, 0)
+                loss = compiled(self.response_func, inverse_convs, self.regularization_lambda, keys,
+                                values, e_mag, angles, responses)
+                loss.backward()
+            self._loss_fn = compiled
+        except Exception as e:  # compilation problems surface as many different exception types
+            warnings.warn(f"torch.compile of the fitting loss failed, using eager PyTorch instead: {e}")
+            self.compile_fit = False
+            self._loss_fn = _fit_loss
 
     def fit_distribution_model_to_data(self, data_handler: ExperimentData, efield_model: EFieldModel):
         """Runs the No U-turn sampler (NUTS) to infer parameter uncertainty."""
@@ -453,20 +522,18 @@ class ResponseModel:
         converged = False
         conv_buffer = []
         step_i = 0
+        keys = tuple(opt_param_dict)
+        inverse_convs = [opt_param_dict[k]['conversion_func'][1] for k in keys]
+        values = [opt_param_dict[k]['values'] for k in keys]
+        if self.compile_fit:
+            # The compiled graphs were built for contiguous inputs (prepare_compiled_fit); `angles` arrives
+            # transposed in memory from EFieldModel.efield_to_subspace, which would trigger a recompile.
+            e_mag, angles, responses = e_mag.contiguous(), angles.contiguous(), responses.contiguous()
 
         while not converged and step_i < opt_settings['opt_steps']:
             optimizer.zero_grad()
-            # Convert parameters from unconstrained space back to their native range for loss calculation
-            back_converted_params = {k: {'values': v['conversion_func'][1](v['values'])} for k, v in opt_param_dict.items()}
-
-            responsivity = self.response_func(e_mag, angles, back_converted_params)
-            likelihood = responsivity * responses.view(-1, 1) + (1 - responsivity) * (1 - responses).view(-1, 1)
-            loss = -likelihood.log().mean()
-
-            # Add L2 regularization to prevent overfitting
-            reg = sum(self.regularization_lambda * (v['values']**2).mean() for v in opt_param_dict.values())
-            loss += reg
-
+            loss = self._loss_fn(self.response_func, inverse_convs, self.regularization_lambda, keys,
+                                 values, e_mag, angles, responses)
             loss.backward()
             optimizer.step()
             scheduler.step()
