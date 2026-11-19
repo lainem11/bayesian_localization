@@ -233,7 +233,7 @@ class StimulusOptimizer:
     """
 
     def __init__(self, efield_model: EFieldModel, response_model: ResponseModel, stimulator: Dict, device: torch.device,
-                 triton_objective: bool = False):
+                 triton_objective: Optional[bool] = None):
         """Initializes the StimulusOptimizer and JIT-compiles its components.
         
         Args:
@@ -242,8 +242,10 @@ class StimulusOptimizer:
             stimulator: A dictionary containing stimulator coil parameters.
             device: The PyTorch device ('cpu' or 'cuda') for computation.
             triton_objective: If True, evaluate the objective with a fused Triton kernel instead of
-                XLA (CUDA only, requires the `jax-triton` package). Falls back to XLA with a warning
-                if unavailable.
+                XLA (requires JAX on a GPU and the `jax-triton` package); falls back to XLA with a
+                warning if unavailable. If None (default), used automatically when JAX runs on a CUDA
+                GPU and `jax-triton` is installed, otherwise XLA is used without a warning. If False,
+                always XLA.
         """
         self.device = device
         # Set JAX device based on the PyTorch device
@@ -291,8 +293,8 @@ class StimulusOptimizer:
             param_keys=self.param_keys
         )
         self.objective_backend = 'xla'
-        if triton_objective:
-            self._use_triton_objective(efield_model, response_model, stimulator)
+        if triton_objective is not False:
+            self._use_triton_objective(efield_model, response_model, stimulator, explicit=triton_objective is True)
 
         self.seed = 0
         self.sobol_sampler = Sobol(d=self.n_coils, scramble=True, seed=self.seed)
@@ -307,34 +309,58 @@ class StimulusOptimizer:
         # Initialize a main JAX randomization key
         self.key = jax.random.key(self.seed)
 
-    def _use_triton_objective(self, efield_model: EFieldModel, response_model: ResponseModel, stimulator: Dict):
-        """Replaces the XLA objective with the fused Triton kernel, or warns and keeps XLA."""
+    def _use_triton_objective(self, efield_model: EFieldModel, response_model: ResponseModel, stimulator: Dict,
+                              explicit: bool):
+        """Replaces the XLA objective with the fused Triton kernel if possible; otherwise keeps XLA.
+
+        With `explicit` (triton_objective=True), every reason for keeping XLA is reported as a warning;
+        in automatic mode (triton_objective=None) only an unexpected failure of the kernel is.
+        """
+        def keep_xla(reason: str):
+            if explicit:
+                warnings.warn(f"triton_objective: {reason}; using the XLA objective.")
+
         if self.jax_device.platform != 'gpu':
-            warnings.warn("triton_objective requires JAX on a CUDA GPU; using the XLA objective.")
+            return keep_xla("requires JAX on a GPU")
+        # Automatic mode only on CUDA, where the kernel has been validated; explicit mode on any JAX GPU
+        platform_version = getattr(getattr(self.jax_device, 'client', None), 'platform_version', '') or ''
+        if not explicit and 'cuda' not in platform_version.lower():
             return
         try:
             from ._internal import _triton_objective as tobj
         except ImportError as e:
-            warnings.warn(f"triton_objective requires the 'jax-triton' package ({e}); using the XLA objective.")
-            return
+            return keep_xla(f"requires the 'jax-triton' package ({e})")
         strain_mode = {"None": tobj.STRAIN_NONE, "5coil_strain": tobj.STRAIN_5COIL}.get(stimulator["constraint_type"])
         if strain_mode is None:
-            warnings.warn(f"Constraint type {stimulator['constraint_type']!r} is not implemented in the Triton "
-                          "objective; using the XLA objective.")
+            return keep_xla(f"constraint type {stimulator['constraint_type']!r} is not implemented in the kernel")
+        if strain_mode == tobj.STRAIN_5COIL and self.n_coils != 5:
+            return keep_xla("the 5-coil strain constraint needs exactly 5 coils")
+        try:
+            objective = tobj.create_triton_objective_function(
+                efield_basis=efield_model.efield_basis.cpu().numpy(),
+                null_dir_basis=efield_model.null_dir_basis.squeeze().cpu().numpy(),
+                prob_lim=response_model.prob_lim,
+                efield_set=efield_model.efield_set.cpu().numpy(),
+                max_current_slope=stimulator['max_current_slope'].cpu().numpy().flatten(),
+                efield_limit=self.efield_limit,
+                strain_mode=strain_mode,
+                strain_limit=self.strain_limit,
+                constraint_penalty=self.optimizer_settings['constraint_penalty'],
+                param_keys=self.param_keys,
+                jax_device=self.jax_device,
+            )
+            # Compile and run the kernel once now, so that a failure falls back to XLA here instead of
+            # surfacing inside the optimization loop.
+            n_vertices = efield_model.efield_set.shape[1]
+            population = jnp.zeros((self.optimizer_settings['popsize'], self.n_coils), dtype=jnp.float32)
+            log_source_prob = jnp.full((n_vertices,), -np.log(n_vertices), dtype=jnp.float32)
+            params = tuple(jax.device_put(response_model.param_dict[k]['values'].cpu().numpy().astype(np.float32),
+                                          self.jax_device) for k in self.param_keys)
+            objective(jax.device_put(population, self.jax_device), log_source_prob, params).block_until_ready()
+        except Exception as e:  # compilation problems surface as many different exception types
+            warnings.warn(f"triton_objective: the Triton kernel failed ({type(e).__name__}: {e}); using the XLA objective.")
             return
-        self.jitted_objective = tobj.create_triton_objective_function(
-            efield_basis=efield_model.efield_basis.cpu().numpy(),
-            null_dir_basis=efield_model.null_dir_basis.squeeze().cpu().numpy(),
-            prob_lim=response_model.prob_lim,
-            efield_set=efield_model.efield_set.cpu().numpy(),
-            max_current_slope=stimulator['max_current_slope'].cpu().numpy().flatten(),
-            efield_limit=self.efield_limit,
-            strain_mode=strain_mode,
-            strain_limit=self.strain_limit,
-            constraint_penalty=self.optimizer_settings['constraint_penalty'],
-            param_keys=self.param_keys,
-            jax_device=self.jax_device,
-        )
+        self.jitted_objective = objective
         self.objective_backend = 'triton'
 
     def get_or_create_jitted_step(self):

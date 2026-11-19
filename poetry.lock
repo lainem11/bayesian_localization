@@ -1736,10 +1736,10 @@ with-cuda = ["nvidia-cublas-cu12 (>=12.1.3.1) ; sys_platform == \"linux\"", "nvi
 name = "jax-triton"
 version = "0.5.0"
 description = "JAX + OpenAI Triton integration"
-optional = true
+optional = false
 python-versions = ">=3.12"
 groups = ["main"]
-markers = "extra == \"triton\" and sys_platform == \"linux\""
+markers = "sys_platform == \"linux\""
 files = [
     {file = "jax_triton-0.5.0-py3-none-any.whl", hash = "sha256:84c03c1d832ba13b0d4da06b81b1f2880054e7351b07518d874b5de9d1dd249d"},
     {file = "jax_triton-0.5.0.tar.gz", hash = "sha256:85b8d7b169bd5b794e15abb60f7bf4764ca28a9ed0cf00de717fd9a60fa4f3f9"},
@@ -5254,7 +5254,7 @@ description = "A language and compiler for custom Deep Learning operations"
 optional = false
 python-versions = "<3.15,>=3.10"
 groups = ["main"]
-markers = "(extra == \"triton\" or platform_system == \"Linux\") and (sys_platform == \"linux\" or platform_system == \"Linux\")"
+markers = "sys_platform == \"linux\" or platform_system == \"Linux\""
 files = [
     {file = "triton-3.7.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:223ac302091491436c248a34ee1e6c47a1026486579103c906ffd805be50cb89"},
     {file = "triton-3.7.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c631b65668d4951213b948a413c0564184305b77bb45cc9d686d3e1ecc4701a3"},
@@ -5536,10 +5536,7 @@ enabler = ["pytest-enabler (>=2.2)"]
 test = ["big-O", "jaraco.functools", "jaraco.itertools", "jaraco.test", "more_itertools", "pytest (>=6,!=8.1.*)", "pytest-ignore-flaky"]
 type = ["pytest-mypy"]
 
-[extras]
-triton = ["jax-triton"]
-
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "3702ca916d588d4b62ee46c1f4d10e5af22fc15385aa67f4ef954c04dcc45cfb"
+content-hash = "5d0d4d7df0cc8133ceb4842ff05b78b6f699d28719a32ec94eec39fae22b8e1d"

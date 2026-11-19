@@ -69,7 +69,7 @@ class LocalizationSession:
                  device: Optional[str] = None,
                  silent_mode: Optional[bool] = False,
                  compile_fit: Optional[bool] = None,
-                 triton_objective: bool = False):
+                 triton_objective: Optional[bool] = None):
         """Initializes the LocalizationSession and all its components.
 
         Args:
@@ -83,9 +83,10 @@ class LocalizationSession:
             compile_fit: If True, the model-fitting loss is compiled with `torch.compile`, which makes
                 `localize()` several times faster after a one-time compilation of a few seconds during
                 initialization. If None (default), enabled when running on CUDA.
-            triton_objective: If True, stimulus optimization evaluates its objective with a fused Triton
-                kernel instead of XLA. Requires a CUDA GPU and the `jax-triton` package; otherwise
-                falls back to XLA with a warning.
+            triton_objective: Whether stimulus optimization evaluates its objective with a fused Triton
+                kernel instead of XLA. If None (default), used when JAX runs on a CUDA GPU and the
+                `jax-triton` package is installed. If True, a missing requirement gives a warning and
+                XLA is used. If False, always XLA.
         """
         _utils.set_random_seed()
 
@@ -124,7 +125,7 @@ class LocalizationSession:
 
     @classmethod
     def load_experiment(cls, save_dir: str, device: Optional[str] = None, silent_mode: Optional[bool] = False,
-                        compile_fit: Optional[bool] = None, triton_objective: bool = False) -> 'LocalizationSession':
+                        compile_fit: Optional[bool] = None, triton_objective: Optional[bool] = None) -> 'LocalizationSession':
         """Loads a saved experiment from a directory.
 
         This method creates a new save directory to avoid overwriting the
