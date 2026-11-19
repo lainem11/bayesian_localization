@@ -443,7 +443,7 @@ class ResponseModel:
             opt_params.append({'params': v['values'], 'lr': lr})
             v['values'].register_hook(lambda grad: torch.clamp(grad, -opt_settings['clip_grad'], opt_settings['clip_grad']))
 
-        optimizer = torch.optim.Adam(opt_params, lr=lr_default * lr_decay_factor, betas=opt_settings['betas'], foreach=True)
+        optimizer = torch.optim.Adam(opt_params, lr=lr_default * lr_decay_factor, betas=opt_settings['betas'], fused=True)
         scheduler = torch.optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lambda epoch: opt_settings['gamma'] ** (1 / opt_settings['opt_steps']))
         return optimizer, scheduler
 
